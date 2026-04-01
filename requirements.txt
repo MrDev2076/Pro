@@ -1,0 +1,6 @@
+streamlit==1.29.0
+pandas==2.1.4
+matplotlib==3.8.2
+groq==0.4.2
+fpdf==1.7.2
+python-dotenv==1.0.0
