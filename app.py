@@ -10,7 +10,7 @@ from groq import Groq
 from fpdf import FPDF
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables (for local development)
 load_dotenv()
 
 # --- 1. THEME & CONFIG ---
@@ -45,15 +45,31 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Get API key from environment variable
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# Get API key from environment variable OR Streamlit secrets
+# Priority: Streamlit secrets > .env file
+if hasattr(st, 'secrets') and 'GROQ_API_KEY' in st.secrets:
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+else:
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not GROQ_API_KEY:
-    st.error("GROQ_API_KEY not found in .env file. Please set it up.")
+    st.error("""
+    ❌ **GROQ_API_KEY not found!** 
+    
+    **For Streamlit Cloud:**
+    1. Go to your app dashboard
+    2. Click on "Settings" → "Secrets"
+    3. Add your API key as: `GROQ_API_KEY = "your-api-key-here"`
+    
+    **For Local Development:**
+    Create a `.env` file with: `GROQ_API_KEY=your-api-key-here`
+    """)
     st.stop()
 
-if "analysis" not in st.session_state: st.session_state.analysis = None
-if "pending_code" not in st.session_state: st.session_state.pending_code = None
+if "analysis" not in st.session_state: 
+    st.session_state.analysis = None
+if "pending_code" not in st.session_state: 
+    st.session_state.pending_code = None
 
 # --- 2. ANALYTICS & PDF LOGIC ---
 class AuditPDF(FPDF):
@@ -66,30 +82,40 @@ class AuditPDF(FPDF):
 def create_final_pdf(data, plot_buf):
     pdf = AuditPDF()
     pdf.add_page()
-    pdf.set_font("Arial", "B", 12); pdf.cell(190, 10, "1. User Input Snippet", 0, 1)
-    pdf.set_font("Courier", "", 9); pdf.multi_cell(180, 5, str(data['original_code']))
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(190, 10, "1. User Input Snippet", 0, 1)
+    pdf.set_font("Courier", "", 9)
+    pdf.multi_cell(180, 5, str(data['original_code']))
     
     pdf.ln(5)
-    pdf.set_font("Arial", "B", 12); pdf.cell(190, 10, "2. Optimized & Structured Code ", 0, 1)
-    pdf.set_font("Courier", "", 9); pdf.multi_cell(180, 5, str(data['annotated_code']))
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(190, 10, "2. Optimized & Structured Code ", 0, 1)
+    pdf.set_font("Courier", "", 9)
+    pdf.multi_cell(180, 5, str(data['annotated_code']))
     
     pdf.ln(5)
-    pdf.set_font("Arial", "B", 12); pdf.cell(190, 10, "3. Improvement Points", 0, 1)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(190, 10, "3. Improvement Points", 0, 1)
     pdf.set_font("Arial", "", 10)
-    for fix in data.get('fixes', []): pdf.multi_cell(180, 6, f"- {fix}")
+    for fix in data.get('fixes', []): 
+        pdf.multi_cell(180, 6, f"- {fix}")
     
     pdf.add_page()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-        tmp.write(plot_buf.getvalue()); tmp_path = tmp.name
+        tmp.write(plot_buf.getvalue())
+        tmp_path = tmp.name
     pdf.image(tmp_path, x=15, w=170)
     os.unlink(tmp_path)
     return pdf.output(dest='S').encode('latin-1')
 
 def complexity_score(comp):
     c = str(comp).lower()
-    if "1" in c: return 100
-    if "log" in c: return 85
-    if "n" in c and "^" not in c: return 70
+    if "1" in c: 
+        return 100
+    if "log" in c: 
+        return 85
+    if "n" in c and "^" not in c: 
+        return 70
     return 40
 
 # --- 3. AUDIT ENGINE ---
@@ -130,14 +156,20 @@ with c1:
         st.info("💡 Select target language to generate full structure:")
         b1, b2, b3 = st.columns(3)
         if b1.button("☕ Java"):
-            st.session_state.analysis = run_audit(st.session_state.pending_code, "Java")
-            st.session_state.pending_code = None; st.rerun()
+            with st.spinner("Analyzing Java code..."):
+                st.session_state.analysis = run_audit(st.session_state.pending_code, "Java")
+                st.session_state.pending_code = None
+                st.rerun()
         if b2.button("⚙️ C++"):
-            st.session_state.analysis = run_audit(st.session_state.pending_code, "C++")
-            st.session_state.pending_code = None; st.rerun()
+            with st.spinner("Analyzing C++ code..."):
+                st.session_state.analysis = run_audit(st.session_state.pending_code, "C++")
+                st.session_state.pending_code = None
+                st.rerun()
         if b3.button("🐍 Python"):
-            st.session_state.analysis = run_audit(st.session_state.pending_code, "Python")
-            st.session_state.pending_code = None; st.rerun()
+            with st.spinner("Analyzing Python code..."):
+                st.session_state.analysis = run_audit(st.session_state.pending_code, "Python")
+                st.session_state.pending_code = None
+                st.rerun()
 
 with c2:
     if st.session_state.analysis:
@@ -145,8 +177,9 @@ with c2:
         tab1, tab2 = st.tabs(["📝 Result", "📊 Analytics"])
         
         with tab1:
-            for f in res.get('fixes', []): st.markdown(f"✅ {f}")
-            st.code(res['annotated_code'], language='java')
+            for f in res.get('fixes', []): 
+                st.markdown(f"✅ {f}")
+            st.code(res['annotated_code'], language='java' if 'java' in res['annotated_code'].lower() else 'python')
             
         with tab2:
             # Comparative Line Graph
@@ -159,17 +192,26 @@ with c2:
             plt.style.use('dark_background')
             fig, ax = plt.subplots(figsize=(8, 4))
             fig.patch.set_facecolor('#0e1117')
-            ax.plot(labels, orig, marker='o', label='Original Snippet', color='#ff7b72')
-            ax.plot(labels, fixed, marker='s', label='Optimized Code', color='#58a6ff')
-            ax.set_ylim(0, 110); ax.legend()
+            ax.plot(labels, orig, marker='o', label='Original Snippet', color='#ff7b72', linewidth=2)
+            ax.plot(labels, fixed, marker='s', label='Optimized Code', color='#58a6ff', linewidth=2)
+            ax.set_ylim(0, 110)
+            ax.legend()
+            ax.grid(True, alpha=0.3)
             st.pyplot(fig)
             
             # PDF Download
-            buf = io.BytesIO(); fig.savefig(buf, format='png')
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            buf.seek(0)
             pdf_bytes = create_final_pdf(res, buf)
-            st.download_button("📥 Download PDF Report", data=pdf_bytes, file_name="Code_Audit.pdf")
+            st.download_button(
+                "📥 Download PDF Report", 
+                data=pdf_bytes, 
+                file_name="Code_Audit_Report.pdf",
+                mime="application/pdf"
+            )
     elif not st.session_state.pending_code:
-        st.info("👈 Paste your code and click 'Audit' to begin.")
+        st.info("👈 Paste your code and click 'Analyze Snippet' to begin.")
         st.markdown('''
 <div style="background-image: linear-gradient(135deg, #0d1117 0%, #161b22 100%); color: #e6edf3; padding: 15px; border-radius: 10px; border: 1px solid #30363d; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 13px;">
     <h2 style="color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 8px; margin-top: 0; font-size: 16px;">
